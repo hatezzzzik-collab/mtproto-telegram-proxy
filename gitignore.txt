@@ -1,0 +1,13 @@
+config.toml
+.env
+.env.*
+*.log
+logs/
+tmp/
+temp/
+.vscode/
+.idea/
+/opt/mtg/
+*.pem
+*.key
+id_rsa*
