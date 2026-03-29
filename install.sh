@@ -3,16 +3,11 @@ set -e
 
 CONFIG="/opt/mtg/config.toml"
 
-# --- функции ---
 generate_secret() {
     DOMAIN=$1
     HEX=$(openssl rand -hex 16)
     DHEX=$(echo -n "$DOMAIN" | xxd -ps)
     echo "ee${HEX}${DHEX}"
-}
-
-get_secret() {
-    grep secret $CONFIG 2>/dev/null | cut -d '"' -f2
 }
 
 get_ip() {
@@ -24,19 +19,30 @@ check_dns() {
     SERVER_IP=$(get_ip)
     RESOLVED_IP=$(getent ahosts $HOST | awk '{print $1}' | head -n1)
 
-    if [ -z "$RESOLVED_IP" ]; then
-        echo "❌ DNS не резолвится"
-        exit 1
-    fi
-
     if [ "$RESOLVED_IP" != "$SERVER_IP" ]; then
-        echo "❌ DNS указывает на $RESOLVED_IP, а сервер $SERVER_IP"
+        echo "❌ DNS mismatch: $RESOLVED_IP != $SERVER_IP"
         exit 1
     fi
 }
 
 install_proxy() {
-    echo "🚀 Установка прокси"
+    HOST=$1
+    FAKE=$2
+    TAG=$3
+
+    # если не передали — спрашиваем
+    if [ -z "$HOST" ]; then
+        read -p "🌐 Домен: " HOST
+    fi
+
+    if [ -z "$FAKE" ]; then
+        FAKE="www.ozon.ru"
+    fi
+
+    echo "🌐 Домен: $HOST"
+    echo "🌐 Fake-TLS: $FAKE"
+
+    check_dns "$HOST"
 
     if ! command -v docker &>/dev/null; then
         apt-get update -qq
@@ -44,17 +50,7 @@ install_proxy() {
         systemctl enable --now docker
     fi
 
-    read -p "🌐 Домен (mtproto1.cfd): " HOST
-    [ -z "$HOST" ] && echo "❌ нужен домен" && exit 1
-
-    check_dns "$HOST"
-
-    read -p "🌐 Fake TLS (Enter = www.ozon.ru): " FAKE
-    FAKE=${FAKE:-www.ozon.ru}
-
     SECRET=$(generate_secret "$FAKE")
-
-    read -p "TAG (Enter пропустить): " TAG
 
     mkdir -p /opt/mtg
 
@@ -83,46 +79,14 @@ EOF
     echo "$LINK"
 }
 
-change_domain() {
-    read -p "Новый fake-TLS домен: " DOMAIN
-
-    SECRET=$(generate_secret "$DOMAIN")
-
-    sed -i "s|secret = \".*\"|secret = \"$SECRET\"|" $CONFIG
-
-    docker restart mtg
-
-    echo "✅ Обновлено"
-    echo "🔑 $SECRET"
-}
-
-show_link() {
-    read -p "Домен/IP: " HOST
-
-    SECRET=$(get_secret)
-
-    echo ""
-    echo "📎 Ссылка:"
-    echo "https://t.me/proxy?server=$HOST&port=443&secret=$SECRET"
-}
-
-# --- меню ---
 case "$1" in
     install)
-        install_proxy
-        ;;
-    domain)
-        change_domain
-        ;;
-    link)
-        show_link
+        install_proxy "$2" "$3" "$4"
         ;;
     *)
         echo ""
         echo "Использование:"
-        echo "  ./install.sh install   — установка"
-        echo "  ./install.sh domain    — сменить fake-TLS"
-        echo "  ./install.sh link      — получить ссылку"
+        echo "bash <(curl -sL URL) install <domain> [fakeTLS] [tag]"
         echo ""
         ;;
 esac
