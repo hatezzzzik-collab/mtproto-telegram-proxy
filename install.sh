@@ -9,15 +9,12 @@ set -euo pipefail
 BASE_DIR="/opt/mtproxy"
 DATA_DIR="${BASE_DIR}/data"
 CONF_DIR="${BASE_DIR}/conf"
-BIN_PATH="/usr/local/bin/mtproxyctl"
+BIN_PATH="/usr/local/bin/proxy"
 CONTAINER_NAME="mtproxy"
 IMAGE="alexdoesh/mtproxy:latest"
 EXTERNAL_PORT="443"
 INTERNAL_PORT="443"
 
-# -----------------------------
-# Helpers
-# -----------------------------
 log()  { echo -e "$*"; }
 ok()   { echo -e "   ✅ $*"; }
 warn() { echo -e "   ⚠️  $*"; }
@@ -96,18 +93,30 @@ load_value() {
   [[ -f "$path" ]] && cat "$path"
 }
 
+container_is_running() {
+  docker ps --format '{{.Names}}' | grep -qx "$CONTAINER_NAME"
+}
+
 print_summary() {
   local ip="$1"
   local bot_secret="$2"
   local tag="$3"
   local link
+  local status_line
 
   link="https://t.me/proxy?server=${ip}&port=${EXTERNAL_PORT}&secret=${bot_secret}"
 
+  if container_is_running; then
+    status_line="🟢 (работает)"
+  else
+    status_line="🔴 (не работает)"
+  fi
+
   log ""
   log "========================================="
-  log "✅ Готово! Прокси запущен."
+  log "✅ Установка завершена."
   log ""
+  log "📡 Статус прокси: ${status_line}"
   log "🌐 IP сервера: ${ip}"
   log "🔑 Secret для @MTProxybot (HEX):"
   log "   ${bot_secret}"
@@ -124,13 +133,13 @@ print_summary() {
   log "   ${link}"
   log ""
   log "🛠  Команды после установки:"
-  log "   mtproxyctl status"
-  log "   mtproxyctl secret show"
-  log "   mtproxyctl tag show"
-  log "   mtproxyctl tag set <32hex>"
-  log "   mtproxyctl tag clear"
-  log "   mtproxyctl link"
-  log "   mtproxyctl restart"
+  log "   proxy status            (показать статус прокси, IP, secret, tag и ссылку)"
+  log "   proxy secret show       (показать secret для @MTProxybot)"
+  log "   proxy tag show          (показать текущий tag)"
+  log "   proxy tag set <32hex>   (установить или изменить tag)"
+  log "   proxy tag clear         (удалить tag)"
+  log "   proxy link              (показать ссылку для подключения в Telegram)"
+  log "   proxy restart           (перезапустить контейнер прокси)"
   log "========================================="
 }
 
@@ -181,6 +190,10 @@ get_ip() {
     || hostname -I | awk '{print $1}'
 }
 
+container_is_running() {
+  docker ps --format '{{.Names}}' | grep -qx "$CONTAINER_NAME"
+}
+
 run_container() {
   local bot_secret tag
   bot_secret="$(load_value "$BOT_SECRET_FILE")"
@@ -211,7 +224,7 @@ run_container() {
 
   sleep 2
 
-  if docker ps --format '{{.Names}}' | grep -qx "$CONTAINER_NAME"; then
+  if container_is_running; then
     echo "✅ Контейнер перезапущен"
   else
     echo "❌ Ошибка запуска контейнера. Логи:"
@@ -221,18 +234,20 @@ run_container() {
 }
 
 show_status() {
-  local bot_secret tag ip link
+  local bot_secret tag ip link status_line
   bot_secret="$(load_value "$BOT_SECRET_FILE")"
   tag="$(load_value "$TAG_FILE")"
   ip="$(get_ip)"
   link="https://t.me/proxy?server=${ip}&port=${EXTERNAL_PORT}&secret=${bot_secret}"
 
-  echo "Container : $CONTAINER_NAME"
-  if docker ps --format '{{.Names}}' | grep -qx "$CONTAINER_NAME"; then
-    echo "Status    : running"
+  if container_is_running; then
+    status_line="🟢 (работает)"
   else
-    echo "Status    : stopped"
+    status_line="🔴 (не работает)"
   fi
+
+  echo "Container : $CONTAINER_NAME"
+  echo "Status    : $status_line"
   echo "IP        : $ip"
   echo "BotSecret : $bot_secret"
   echo "Tag       : ${tag:-<empty>}"
@@ -242,16 +257,16 @@ show_status() {
 usage() {
   cat <<USAGE
 Использование:
-  mtproxyctl status
-  mtproxyctl restart
+  proxy status            (показать статус прокси, IP, secret, tag и ссылку)
+  proxy restart           (перезапустить контейнер прокси)
 
-  mtproxyctl secret show
+  proxy secret show       (показать secret для @MTProxybot)
 
-  mtproxyctl tag show
-  mtproxyctl tag set <32hex>
-  mtproxyctl tag clear
+  proxy tag show          (показать текущий tag)
+  proxy tag set <32hex>   (установить или изменить tag)
+  proxy tag clear         (удалить tag)
 
-  mtproxyctl link
+  proxy link              (показать ссылку для подключения в Telegram)
 USAGE
 }
 
@@ -286,7 +301,7 @@ case "$cmd" in
         ;;
       set)
         value="${3:-}"
-        [[ -n "$value" ]] || die "Укажи tag: mtproxyctl tag set <32hex>"
+        [[ -n "$value" ]] || die "Укажи tag: proxy tag set <32hex>"
         validate_hex32 "$value" || die "Tag должен быть ровно 32 hex-символа"
         value="$(lower_hex "$value")"
         save_value "$TAG_FILE" "$value"
@@ -382,7 +397,7 @@ start_container() {
 
   sleep 3
 
-  if docker ps --format '{{.Names}}' | grep -qx "$CONTAINER_NAME"; then
+  if container_is_running; then
     ok "Прокси запущен"
   else
     err "Ошибка запуска! Логи:"
@@ -425,7 +440,7 @@ main() {
   fi
 
   write_cli
-  ok "Установлена CLI-команда: mtproxyctl"
+  ok "Установлена CLI-команда: proxy"
 
   start_container "$bot_secret" "$tag"
 
