@@ -14,7 +14,6 @@ CONTAINER_NAME="mtproxy"
 IMAGE="alexdoesh/mtproxy:latest"
 EXTERNAL_PORT="443"
 INTERNAL_PORT="443"
-DEFAULT_FAKE_TLS_DOMAIN="www.google.com"
 
 # -----------------------------
 # Helpers
@@ -77,10 +76,6 @@ lower_hex() {
   echo "$1" | tr '[:upper:]' '[:lower:]'
 }
 
-domain_to_hex() {
-  printf "%s" "$1" | xxd -ps -c 256 | tr -d '\n'
-}
-
 generate_hex_secret() {
   head -c 16 /dev/urandom | xxd -ps -c 256 | tr -d '\n'
 }
@@ -101,24 +96,13 @@ load_value() {
   [[ -f "$path" ]] && cat "$path"
 }
 
-build_fake_tls_secret() {
-  local bot_secret="$1"
-  local domain="$2"
-  local domain_hex
-  domain_hex="$(domain_to_hex "$domain")"
-  printf "ee%s%s" "$bot_secret" "$domain_hex"
-}
-
 print_summary() {
   local ip="$1"
   local bot_secret="$2"
   local tag="$3"
-  local domain="$4"
-  local fake_tls_secret
   local link
 
-  fake_tls_secret="$(build_fake_tls_secret "$bot_secret" "$domain")"
-  link="https://t.me/proxy?server=${ip}&port=${EXTERNAL_PORT}&secret=${fake_tls_secret}"
+  link="https://t.me/proxy?server=${ip}&port=${EXTERNAL_PORT}&secret=${bot_secret}"
 
   log ""
   log "========================================="
@@ -136,9 +120,6 @@ print_summary() {
     log "🏷  Tag: не задан"
     log ""
   fi
-  log "🌍 Fake TLS domain:"
-  log "   ${domain}"
-  log ""
   log "📎 Ссылка для подключения в Telegram:"
   log "   ${link}"
   log ""
@@ -148,8 +129,6 @@ print_summary() {
   log "   mtproxyctl tag show"
   log "   mtproxyctl tag set <32hex>"
   log "   mtproxyctl tag clear"
-  log "   mtproxyctl domain show"
-  log "   mtproxyctl domain set <domain>"
   log "   mtproxyctl link"
   log "   mtproxyctl restart"
   log "========================================="
@@ -167,11 +146,9 @@ CONTAINER_NAME="mtproxy"
 IMAGE="alexdoesh/mtproxy:latest"
 EXTERNAL_PORT="443"
 INTERNAL_PORT="443"
-DEFAULT_FAKE_TLS_DOMAIN="www.google.com"
 
 BOT_SECRET_FILE="${CONF_DIR}/bot_secret.hex"
 TAG_FILE="${CONF_DIR}/tag.hex"
-DOMAIN_FILE="${CONF_DIR}/fake_tls_domain.txt"
 
 die() {
   echo "❌ $*" >&2
@@ -184,10 +161,6 @@ validate_hex32() {
 
 lower_hex() {
   echo "$1" | tr '[:upper:]' '[:lower:]'
-}
-
-domain_to_hex() {
-  printf "%s" "$1" | xxd -ps -c 256 | tr -d '\n'
 }
 
 load_value() {
@@ -206,14 +179,6 @@ get_ip() {
   curl -4 -fsS ifconfig.me 2>/dev/null \
     || curl -4 -fsS icanhazip.com 2>/dev/null \
     || hostname -I | awk '{print $1}'
-}
-
-build_fake_tls_secret() {
-  local bot_secret="$1"
-  local domain="$2"
-  local domain_hex
-  domain_hex="$(domain_to_hex "$domain")"
-  printf "ee%s%s" "$bot_secret" "$domain_hex"
 }
 
 run_container() {
@@ -256,14 +221,11 @@ run_container() {
 }
 
 show_status() {
-  local bot_secret tag domain ip fake_tls_secret link
+  local bot_secret tag ip link
   bot_secret="$(load_value "$BOT_SECRET_FILE")"
   tag="$(load_value "$TAG_FILE")"
-  domain="$(load_value "$DOMAIN_FILE")"
-  [[ -n "$domain" ]] || domain="$DEFAULT_FAKE_TLS_DOMAIN"
   ip="$(get_ip)"
-  fake_tls_secret="$(build_fake_tls_secret "$bot_secret" "$domain")"
-  link="https://t.me/proxy?server=${ip}&port=${EXTERNAL_PORT}&secret=${fake_tls_secret}"
+  link="https://t.me/proxy?server=${ip}&port=${EXTERNAL_PORT}&secret=${bot_secret}"
 
   echo "Container : $CONTAINER_NAME"
   if docker ps --format '{{.Names}}' | grep -qx "$CONTAINER_NAME"; then
@@ -274,7 +236,6 @@ show_status() {
   echo "IP        : $ip"
   echo "BotSecret : $bot_secret"
   echo "Tag       : ${tag:-<empty>}"
-  echo "Domain    : $domain"
   echo "Link      : $link"
 }
 
@@ -289,9 +250,6 @@ usage() {
   mtproxyctl tag show
   mtproxyctl tag set <32hex>
   mtproxyctl tag clear
-
-  mtproxyctl domain show
-  mtproxyctl domain set <domain>
 
   mtproxyctl link
 USAGE
@@ -345,37 +303,11 @@ case "$cmd" in
         usage; exit 1 ;;
     esac
     ;;
-  domain)
-    sub="${2:-}"
-    case "$sub" in
-      show)
-        if [[ -f "$DOMAIN_FILE" ]] && [[ -n "$(cat "$DOMAIN_FILE")" ]]; then
-          cat "$DOMAIN_FILE"
-        else
-          echo "$DEFAULT_FAKE_TLS_DOMAIN"
-        fi
-        ;;
-      set)
-        value="${3:-}"
-        [[ -n "$value" ]] || die "Укажи домен: mtproxyctl domain set <domain>"
-        printf "%s\n" "$value" > "$DOMAIN_FILE"
-        chmod 600 "$DOMAIN_FILE"
-        echo "✅ Fake TLS domain установлен: $value"
-        echo "ℹ️  Новая ссылка:"
-        "$0" link
-        ;;
-      *)
-        usage; exit 1 ;;
-    esac
-    ;;
   link)
     bot_secret="$(load_value "$BOT_SECRET_FILE")"
     [[ -n "$bot_secret" ]] || die "Не найден bot secret"
-    domain="$(load_value "$DOMAIN_FILE")"
-    [[ -n "$domain" ]] || domain="$DEFAULT_FAKE_TLS_DOMAIN"
     ip="$(get_ip)"
-    fake_tls_secret="$(build_fake_tls_secret "$bot_secret" "$domain")"
-    echo "https://t.me/proxy?server=${ip}&port=${EXTERNAL_PORT}&secret=${fake_tls_secret}"
+    echo "https://t.me/proxy?server=${ip}&port=${EXTERNAL_PORT}&secret=${bot_secret}"
     ;;
   *)
     usage
@@ -390,7 +322,6 @@ EOF
 parse_args() {
   INITIAL_TAG=""
   INITIAL_SECRET=""
-  INITIAL_DOMAIN="$DEFAULT_FAKE_TLS_DOMAIN"
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -402,14 +333,10 @@ parse_args() {
         INITIAL_SECRET="${2:-}"
         shift 2
         ;;
-      --domain)
-        INITIAL_DOMAIN="${2:-}"
-        shift 2
-        ;;
       *)
         die "Неизвестный параметр: $1
 Использование:
-  ./install.sh [--secret 32hex] [--tag 32hex] [--domain example.com]"
+  ./install.sh [--secret 32hex] [--tag 32hex]"
         ;;
     esac
   done
@@ -423,8 +350,6 @@ parse_args() {
     validate_hex32 "$INITIAL_TAG" || die "Tag должен быть ровно 32 hex-символа"
     INITIAL_TAG="$(lower_hex "$INITIAL_TAG")"
   fi
-
-  [[ -n "$INITIAL_DOMAIN" ]] || INITIAL_DOMAIN="$DEFAULT_FAKE_TLS_DOMAIN"
 }
 
 start_container() {
@@ -477,10 +402,9 @@ main() {
   install_packages
   ensure_dirs
 
-  local bot_secret tag domain ip
+  local bot_secret tag ip
   bot_secret="$INITIAL_SECRET"
   tag="$INITIAL_TAG"
-  domain="$INITIAL_DOMAIN"
 
   if [[ -z "$bot_secret" ]]; then
     bot_secret="$(generate_hex_secret)"
@@ -490,7 +414,6 @@ main() {
   fi
 
   save_value "${CONF_DIR}/bot_secret.hex" "$bot_secret"
-  save_value "${CONF_DIR}/fake_tls_domain.txt" "$domain"
 
   if [[ -n "$tag" ]]; then
     save_value "${CONF_DIR}/tag.hex" "$tag"
@@ -509,7 +432,7 @@ main() {
   ip="$(get_ip)"
   [[ -n "$ip" ]] || die "Не удалось определить внешний IP"
 
-  print_summary "$ip" "$bot_secret" "$tag" "$domain"
+  print_summary "$ip" "$bot_secret" "$tag"
 }
 
 main "$@"
