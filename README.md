@@ -1,28 +1,137 @@
-# 🛡 MTProto Proxy (All-in-One Script)
+# MTProto Proxy Manager
 
-Простой и удобный скрипт для установки и управления MTProto Proxy через Docker.
+Удобный скрипт для установки и управления MTProto Proxy (Telegram) с поддержкой:
 
-## 🚀 Возможности
-- HEX secret (fake-TLS)
-- Домен вместо IP
-- Авто-проверка DNS
-- Поддержка TAG
-- Один файл управления
+* 🔐 HEX-секретов
+* 🌐 Домена вместо IP
+* 🕵️ Fake-TLS (маскировка под сайт)
+* 🏷 TAG от @MTProxybot
+* 🔄 Управления через CLI
 
-## 📦 Установка
-git clone https://github.com/yourusername/mtproto-proxy.git
-cd mtproto-proxy
-chmod +x install.sh
-sudo ./install.sh install
+---
 
-## 🌐 Важно
-Создай A-запись:
-mtproto1.cfd → ВАШ_IP
+## 🚀 Установка
 
-## ⚙️ Команды
-sudo ./install.sh install
-sudo ./install.sh domain
-./install.sh link
+```bash
+chmod +x script.sh
+./script.sh install
+```
 
-## 🔗 Пример
-https://t.me/proxy?server=mtproto1.cfd&port=443&secret=SECRET
+---
+
+## ⚙️ Возможности
+
+### 🔐 Генерация секрета
+
+* Формат: `ee + random + fakeTLS(hex)`
+* Генерируется автоматически
+* Можно пересоздать в любой момент
+
+---
+
+### 🌐 Домен
+
+Можно использовать:
+
+```
+yourdomain.com
+```
+
+Требования:
+
+* A-запись указывает на сервер
+* Порт 443 открыт
+* Без Cloudflare proxy (только DNS)
+
+---
+
+### 🕵️ Fake-TLS
+
+По умолчанию:
+
+```
+www.ozon.ru
+```
+
+Можно изменить:
+
+```bash
+./script.sh faketls
+```
+
+---
+
+### 🏷 TAG (MTProxyBot)
+
+Добавляется при установке или командой:
+
+```bash
+./script.sh tag
+```
+
+---
+
+## 🧰 Команды
+
+| Команда   | Описание                   |
+| --------- | -------------------------- |
+| `install` | Установка прокси           |
+| `link`    | Показать ссылку            |
+| `regen`   | Сгенерировать новый секрет |
+| `domain`  | Сменить домен/IP           |
+| `faketls` | Сменить fake-TLS           |
+| `tag`     | Сменить TAG                |
+| `restart` | Перезапустить прокси       |
+
+---
+
+## 🔗 Получение ссылки
+
+```bash
+./script.sh link
+```
+
+Пример:
+
+```
+https://t.me/proxy?server=domain.com&port=443&secret=ee...
+```
+
+---
+
+## 📁 Конфигурация
+
+Хранится в:
+
+```
+/opt/mtg/env
+```
+
+---
+
+## 🐳 Docker
+
+Используется образ:
+
+```
+nineseconds/mtg:2
+```
+
+---
+
+## ⚠️ Важно
+
+* Не используйте несуществующие fake-TLS домены
+* Не используйте свой домен как fake-TLS
+* Следите за открытым портом 443
+
+---
+
+## 📌 Планы
+
+* [ ] Веб-панель
+* [ ] Мульти-прокси
+* [ ] Статистика
+* [ ] Telegram-бот
+
+---
