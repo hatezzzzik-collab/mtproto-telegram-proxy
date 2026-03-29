@@ -140,6 +140,7 @@ print_summary() {
   log "   proxy tag clear         (удалить tag)"
   log "   proxy link              (показать ссылку для подключения в Telegram)"
   log "   proxy restart           (перезапустить контейнер прокси)"
+  log "   proxy uninstall         (полностью удалить прокси, файлы, папки и CLI)"
   log "========================================="
 }
 
@@ -151,6 +152,7 @@ set -euo pipefail
 BASE_DIR="/opt/mtproxy"
 DATA_DIR="${BASE_DIR}/data"
 CONF_DIR="${BASE_DIR}/conf"
+BIN_PATH="/usr/local/bin/proxy"
 CONTAINER_NAME="mtproxy"
 IMAGE="alexdoesh/mtproxy:latest"
 EXTERNAL_PORT="443"
@@ -254,6 +256,29 @@ show_status() {
   echo "Link      : $link"
 }
 
+uninstall_proxy() {
+  echo "⚠️  Сейчас будет полностью удалён прокси:"
+  echo "   - контейнер $CONTAINER_NAME"
+  echo "   - папка $BASE_DIR"
+  echo "   - команда $BIN_PATH"
+  echo "   - Docker image $IMAGE"
+  echo ""
+  read -r -p "Введи YES для подтверждения: " confirm
+
+  if [[ "$confirm" != "YES" ]]; then
+    echo "❌ Удаление отменено"
+    exit 1
+  fi
+
+  docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+  docker rmi "$IMAGE" >/dev/null 2>&1 || true
+
+  rm -rf "$BASE_DIR"
+  rm -f "$BIN_PATH"
+
+  echo "✅ Прокси полностью удалён"
+}
+
 usage() {
   cat <<USAGE
 Использование:
@@ -267,6 +292,7 @@ usage() {
   proxy tag clear         (удалить tag)
 
   proxy link              (показать ссылку для подключения в Telegram)
+  proxy uninstall         (полностью удалить прокси, файлы, папки и CLI)
 USAGE
 }
 
@@ -323,6 +349,9 @@ case "$cmd" in
     [[ -n "$bot_secret" ]] || die "Не найден bot secret"
     ip="$(get_ip)"
     echo "https://t.me/proxy?server=${ip}&port=${EXTERNAL_PORT}&secret=${bot_secret}"
+    ;;
+  uninstall)
+    uninstall_proxy
     ;;
   *)
     usage
