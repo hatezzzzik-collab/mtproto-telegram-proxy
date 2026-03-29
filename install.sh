@@ -7,14 +7,23 @@ ENV_FILE="$CONFIG_DIR/env"
 CONTAINER_NAME="mtg"
 
 # -------------------------------
-# Генерация HEX секрета (32 байта)
+# HEX кодирование строки
 # -------------------------------
-gen_secret() {
-    echo "ee$(openssl rand -hex 16)"
+to_hex() {
+    echo -n "$1" | xxd -ps | tr -d '\n'
 }
 
 # -------------------------------
-# Загрузка конфига
+# Генерация fake-TLS секрета
+# -------------------------------
+gen_secret() {
+    RAND=$(openssl rand -hex 16)
+    DOMAIN_HEX=$(to_hex "$FAKE_TLS")
+    echo "ee${RAND}${DOMAIN_HEX}"
+}
+
+# -------------------------------
+# Загрузка
 # -------------------------------
 load_env() {
     if [ -f "$ENV_FILE" ]; then
@@ -23,7 +32,7 @@ load_env() {
 }
 
 # -------------------------------
-# Сохранение конфига
+# Сохранение
 # -------------------------------
 save_env() {
     cat > "$ENV_FILE" <<EOF
@@ -31,19 +40,18 @@ DOMAIN="$DOMAIN"
 PORT="$PORT"
 SECRET="$SECRET"
 TAG="$TAG"
+FAKE_TLS="$FAKE_TLS"
 EOF
 }
 
 # -------------------------------
-# Создание config.toml
+# Конфиг
 # -------------------------------
 generate_config() {
     cat > "$CONFIG_FILE" <<EOF
 secret = "${SECRET}"
 bind-to = "0.0.0.0:${PORT}"
 prefer-ip = "prefer-ipv4"
-allow-fallback-on-unknown-dc = true
-concurrency = 8192
 
 $( [ -n "$TAG" ] && echo "tag = \"$TAG\"" )
 
@@ -53,7 +61,7 @@ EOF
 }
 
 # -------------------------------
-# Запуск / перезапуск
+# Перезапуск
 # -------------------------------
 restart_proxy() {
     docker rm -f $CONTAINER_NAME 2>/dev/null || true
@@ -74,14 +82,16 @@ restart_proxy() {
 install() {
     mkdir -p $CONFIG_DIR
 
-    echo "👉 Введите домен или IP:"
+    echo "👉 Домен или IP:"
     read DOMAIN
 
-    echo "👉 Введите порт (например 3128):"
+    echo "👉 Порт (например 3128):"
     read PORT
 
-    echo "👉 Введите TAG (или Enter чтобы пропустить):"
+    echo "👉 TAG (Enter чтобы пропустить):"
     read TAG
+
+    FAKE_TLS="www.ozon.ru"
 
     SECRET=$(gen_secret)
 
@@ -89,7 +99,6 @@ install() {
     generate_config
     restart_proxy
 
-    echo ""
     echo "🚀 Установлено!"
     show_link
 }
@@ -101,30 +110,49 @@ show_link() {
     load_env
 
     echo ""
-    echo "🔗 Ваша ссылка:"
+    echo "🔗 Ссылка:"
     echo "https://t.me/proxy?server=${DOMAIN}&port=443&secret=${SECRET}"
+    echo "🌐 Fake-TLS: ${FAKE_TLS}"
     echo ""
 }
 
 # -------------------------------
-# Смена секрета
+# Новый секрет
 # -------------------------------
 regen_secret() {
     load_env
 
     SECRET=$(gen_secret)
-    echo "🔑 Новый секрет: $SECRET"
 
     save_env
     generate_config
     restart_proxy
 
-    echo "✅ Секрет обновлён"
+    echo "🔑 Секрет обновлён"
     show_link
 }
 
 # -------------------------------
-# Смена домена/IP
+# Смена fake-TLS
+# -------------------------------
+set_fake_tls() {
+    load_env
+
+    echo "👉 Новый fake-TLS домен:"
+    read FAKE_TLS
+
+    SECRET=$(gen_secret)
+
+    save_env
+    generate_config
+    restart_proxy
+
+    echo "✅ Fake-TLS обновлён"
+    show_link
+}
+
+# -------------------------------
+# Смена домена
 # -------------------------------
 set_domain() {
     load_env
@@ -137,7 +165,7 @@ set_domain() {
 }
 
 # -------------------------------
-# Смена TAG
+# TAG
 # -------------------------------
 set_tag() {
     load_env
@@ -153,11 +181,10 @@ set_tag() {
 }
 
 # -------------------------------
-# Установка Docker
+# Docker
 # -------------------------------
 install_docker() {
     if ! command -v docker &>/dev/null; then
-        echo "📦 Устанавливаю Docker..."
         apt-get update -qq
         apt-get install -y -qq docker.io >/dev/null 2>&1
         systemctl enable --now docker >/dev/null 2>&1
@@ -165,7 +192,7 @@ install_docker() {
 }
 
 # -------------------------------
-# CLI команды
+# CLI
 # -------------------------------
 case "$1" in
     install)
@@ -184,19 +211,23 @@ case "$1" in
     tag)
         set_tag
         ;;
+    faketls)
+        set_fake_tls
+        ;;
     restart)
         load_env
         restart_proxy
         ;;
     *)
         echo ""
-        echo "Использование:"
-        echo "  $0 install   — установка"
-        echo "  $0 link      — показать ссылку"
-        echo "  $0 regen     — новый секрет"
-        echo "  $0 domain    — сменить домен/IP"
-        echo "  $0 tag       — сменить TAG"
-        echo "  $0 restart   — перезапуск"
+        echo "Команды:"
+        echo "  install   — установка"
+        echo "  link      — ссылка"
+        echo "  regen     — новый секрет"
+        echo "  domain    — сменить домен"
+        echo "  tag       — сменить TAG"
+        echo "  faketls   — сменить fake-TLS"
+        echo "  restart   — перезапуск"
         echo ""
         ;;
 esac
